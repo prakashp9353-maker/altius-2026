@@ -54,13 +54,14 @@ export function Leaderboard() {
       snapshot = JSON.parse(localStorage.getItem('altius-leaderboard-rankings') ?? 'null')
     } catch {}
 
-    if (!snapshot) {
-      snapshot = { scores: scoreKey, previous: null, current: ranks }
-      localStorage.setItem('altius-leaderboard-rankings', JSON.stringify(snapshot))
+    if (!snapshot || snapshot.version !== 2 || !snapshot.current) {
+      snapshot = { version: 2, scores: scoreKey, previous: null, current: ranks }
     } else if (snapshot.scores !== scoreKey) {
-      snapshot = { scores: scoreKey, previous: snapshot.current ?? null, current: ranks }
-      localStorage.setItem('altius-leaderboard-rankings', JSON.stringify(snapshot))
+      snapshot = { version: 2, scores: scoreKey, previous: snapshot.current, current: ranks }
     }
+    try {
+      localStorage.setItem('altius-leaderboard-rankings', JSON.stringify(snapshot))
+    } catch {}
 
     for (const row of rows) {
       const oldRank = snapshot.previous?.[row.department_id]
