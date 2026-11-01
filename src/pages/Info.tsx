@@ -49,24 +49,29 @@ export function Leaderboard() {
 
     const scoreKey = JSON.stringify(rows.map((r: any) => [r.department_id, r.total_points, r.winner_points, r.runner_points, r.participation_points, r.bonus_points, r.firsts, r.seconds]))
     const ranks = Object.fromEntries(rows.map((r: any) => [r.department_id, r.rank]))
+    const rankKey = JSON.stringify(rows.map((r: any) => [r.department_id, r.rank]))
+    const storageKey = 'altius-leaderboard-rankings-v3'
     let snapshot: any = null
     try {
-      snapshot = JSON.parse(localStorage.getItem('altius-leaderboard-rankings') ?? 'null')
+      snapshot = JSON.parse(localStorage.getItem(storageKey) ?? 'null')
+      localStorage.removeItem('altius-leaderboard-rankings')
     } catch {}
 
-    if (!snapshot || !snapshot.current) {
-      snapshot = { version: 2, scores: scoreKey, previous: null, current: ranks }
+    if (!snapshot || snapshot.version !== 3 || !snapshot.current || (snapshot.rankKey !== rankKey && snapshot.scores === scoreKey)) {
+      snapshot = { version: 3, scores: scoreKey, rankKey, previous: null, current: ranks }
     } else if (snapshot.scores !== scoreKey) {
-      snapshot = { version: 2, scores: scoreKey, previous: snapshot.current, current: ranks }
+      snapshot = { version: 3, scores: scoreKey, rankKey, previous: snapshot.current, current: ranks }
     }
     try {
-      localStorage.setItem('altius-leaderboard-rankings', JSON.stringify(snapshot))
+      localStorage.setItem(storageKey, JSON.stringify(snapshot))
     } catch {}
 
+    const allPointsEqual = rows.length > 0 && rows.every((row: any) => row.total_points === rows[0].total_points)
+    const allRanksEqual = rows.length > 0 && rows.every((row: any) => row.rank === rows[0].rank)
     for (const row of rows) {
       const oldRank = snapshot.previous?.[row.department_id]
       const newRank = row.rank
-      row.movement = oldRank == null || oldRank === newRank ? '–' : oldRank > newRank ? `▲ ${oldRank - newRank}` : `▼ ${newRank - oldRank}`
+      row.movement = allPointsEqual && allRanksEqual || oldRank == null || oldRank === newRank ? '–' : oldRank > newRank ? `▲ ${oldRank - newRank}` : `▼ ${newRank - oldRank}`
     }
     return { data: rows, error: null }
   })
