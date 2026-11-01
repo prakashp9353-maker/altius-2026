@@ -12,7 +12,7 @@ export function Podium({ rows }: { rows: any[] }) {
 }
 export function Table({ rows }: { rows: any[] }) {
   return <div className="card overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead className="text-left text-mute"><tr>{['Rank', 'Department', 'Total', 'Winner', 'Runner-up', 'Participation', 'Bonus', 'Movement'].map(h => <th key={h} className="p-3 font-medium">{h}</th>)}</tr></thead>
-    <tbody>{rows.map(r => <tr key={r.department_id} className="border-t border-white/10"><td className="p-3 text-gold">{r.rank}</td><td className="p-3 text-white">{r.name}</td><td className="p-3 font-semibold">{r.total_points}</td><td className="p-3">{r.winner_points}</td><td className="p-3">{r.runner_points}</td><td className="p-3">{r.participation_points}</td><td className="p-3">{r.bonus_points}</td><td className="p-3 text-mute">–</td></tr>)}</tbody></table></div>
+    <tbody>{rows.map(r => <tr key={r.department_id} className="border-t border-white/10"><td className="p-3 text-gold">{r.rank}</td><td className="p-3 text-white">{r.name}</td><td className="p-3 font-semibold">{r.total_points}</td><td className="p-3">{r.winner_points}</td><td className="p-3">{r.runner_points}</td><td className="p-3">{r.participation_points}</td><td className="p-3">{r.bonus_points}</td><td className={`p-3 text-mute ${r.movement?.startsWith('▲') ? 'text-emerald-400' : r.movement?.startsWith('▼') ? 'text-red-400' : ''}`}>{r.movement ?? '–'}</td></tr>)}</tbody></table></div>
 }
 export function Leaderboard() {
   const lb = useQuery<any[]>(async () => {
@@ -45,6 +45,27 @@ export function Leaderboard() {
       if (key !== previous) rank = i + 1
       rows[i].rank = rank
       previous = key
+    }
+
+    const scoreKey = JSON.stringify(rows.map((r: any) => [r.department_id, r.total_points, r.winner_points, r.runner_points, r.participation_points, r.bonus_points, r.firsts, r.seconds]))
+    const ranks = Object.fromEntries(rows.map((r: any) => [r.department_id, r.rank]))
+    let snapshot: any = null
+    try {
+      snapshot = JSON.parse(localStorage.getItem('altius-leaderboard-rankings') ?? 'null')
+    } catch {}
+
+    if (!snapshot) {
+      snapshot = { scores: scoreKey, previous: null, current: ranks }
+      localStorage.setItem('altius-leaderboard-rankings', JSON.stringify(snapshot))
+    } else if (snapshot.scores !== scoreKey) {
+      snapshot = { scores: scoreKey, previous: snapshot.current ?? null, current: ranks }
+      localStorage.setItem('altius-leaderboard-rankings', JSON.stringify(snapshot))
+    }
+
+    for (const row of rows) {
+      const oldRank = snapshot.previous?.[row.department_id]
+      const newRank = row.rank
+      row.movement = oldRank == null || oldRank === newRank ? '–' : oldRank > newRank ? `▲ ${oldRank - newRank}` : `▼ ${newRank - oldRank}`
     }
     return { data: rows, error: null }
   })
