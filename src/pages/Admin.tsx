@@ -90,12 +90,14 @@ function ResultsAdmin() {
   const [f, setF] = useState<any>(blankR), [m, setM] = useState('')
   const set = (k: string, v: any) => setF({ ...f, [k]: v })
   async function save(e: any) {
-    e.preventDefault()
-    if (f.winner_dept_id && f.winner_dept_id === f.runner_dept_id) return setM('Winner and runner-up must be different departments.')
-    const row = { ...f, winner_dept_id: f.winner_dept_id || null, runner_dept_id: f.runner_dept_id || null }
-    const { error } = await supabase.from('event_results').upsert(row, { onConflict: 'event_id' })
-    if (error) return setM(error.message); setM('Result saved. Points update automatically (5 winner, 3 runner-up, once per placing).'); setF(blankR); rs.reload()
-  }
+  e.preventDefault()
+  const row = { ...f, winner_dept_id: f.winner_dept_id || null, runner_dept_id: f.runner_dept_id || null }
+  const { error } = await supabase.from('event_results').upsert(row, { onConflict: 'event_id' })
+  if (error) return setM(error.message)
+  setM('Result saved. Points update automatically (5 winner, 3 runner-up, once per placing).')
+  setF(blankR)
+  rs.reload()
+}
   return <div><Msg m={m} /><form onSubmit={save} className="card mb-6 grid gap-3 p-4 sm:grid-cols-2">
     <L t="Event *"><select className="input" required value={f.event_id} onChange={e => set('event_id', e.target.value)}><option value="">Select event</option>{evs.data?.map((x: any) => <option key={x.id} value={x.id}>{x.title}</option>)}</select></L>
     <L t="Status"><select className="input" value={f.status} onChange={e => set('status', e.target.value)}><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></L>
