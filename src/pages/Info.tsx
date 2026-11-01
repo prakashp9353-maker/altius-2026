@@ -54,7 +54,7 @@ export function Leaderboard() {
       snapshot = JSON.parse(localStorage.getItem('altius-leaderboard-rankings') ?? 'null')
     } catch {}
 
-    if (!snapshot || snapshot.version !== 2 || !snapshot.current) {
+    if (!snapshot || !snapshot.current) {
       snapshot = { version: 2, scores: scoreKey, previous: null, current: ranks }
     } else if (snapshot.scores !== scoreKey) {
       snapshot = { version: 2, scores: scoreKey, previous: snapshot.current, current: ranks }
