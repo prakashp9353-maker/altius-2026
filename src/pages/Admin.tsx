@@ -108,7 +108,20 @@ function ResultsAdmin() {
     <label className="text-sm"><input type="checkbox" checked={f.provisional} onChange={e => set('provisional', e.target.checked)} /> Mark as PROVISIONAL</label>
     <button className="btn">Save result</button></form>
     <State q={rs} empty="No results entered yet.">{rs.data?.map((x: any) => <div key={x.id} className="card mb-2 flex flex-wrap items-center justify-between gap-2 p-3 text-sm"><span><b className="text-white">{x.events?.title}</b> · 🥇 {x.w?.name ?? '—'} · 🥈 {x.r?.name ?? '—'} · {x.status}</span>
-      <button className="btn-o" onClick={() => { const { events, w, r, created_at, updated_at, ...rest } = x; setF(rest); window.scrollTo(0, 0) }}>Edit</button></div>)}</State></div>
+      <span className="flex gap-2">
+        <button className="btn-o" onClick={() => { const { events, w, r, created_at, updated_at, ...rest } = x; setF(rest); window.scrollTo(0, 0) }}>Edit</button>
+        <button
+          className="btn-o border-red-500 text-red-500"
+          onClick={async () => {
+            if (!confirm(`Delete result for "${x.events?.title}"?`)) return
+            const { error } = await supabase.from('event_results').delete().eq('id', x.id)
+            if (error) return setM(error.message)
+            setM('Result deleted.')
+            setF(blankR)
+            rs.reload()
+          }}
+        >Delete</button>
+      </span></div>)}</State></div>
 }
 
 function Records({ kind }: { kind: 'participation' | 'bonus' }) {
@@ -172,12 +185,17 @@ function GuideAdmin() {
   return <div><Msg m={m} /><p className="mb-2 text-sm text-mute">Use "## Heading" for sections and "- " for bullet points.</p><textarea className="input" rows={22} value={t} onChange={e => setT(e.target.value)} /><button className="btn mt-3" onClick={save}>Save guidelines</button></div>
 }
 function Overview() {
-  const c = (t: string, f?: (q: any) => any) => useQuery(() => { let q: any = supabase.from(t).select('id', { count: 'exact', head: true }); return f ? f(q) : q })
-  const d = c('departments'), e = c('events'), p = c('events', q => q.eq('published', true)), r = c('event_results', q => q.eq('status', 'approved'))
+  const c = (t: string, f?: (q: any) => any) => useQuery<number>(async () => {
+    let q: any = supabase.from(t).select('id', { count: 'exact', head: true })
+    if (f) q = f(q)
+    const { count, error } = await q
+    return { data: count ?? 0, error }
+  })
+  const d = c('departments'), e = c('events'), p = c('events', q => q.eq('published', true)), draft = c('events', q => q.eq('published', false)), r = c('event_results', q => q.eq('status', 'approved').eq('provisional', false))
   const lb = useQuery(() => supabase.from('leaderboard').select('name,total_points,rank').order('rank').limit(5))
   const log = useQuery(() => supabase.from('score_audit_logs').select('*').order('changed_at', { ascending: false }).limit(15))
-  const counts = (q: any) => q.count ?? 0
-  const tiles = [['Departments', counts(d)], ['Events', counts(e)], ['Published', counts(p)], ['Drafts', counts(e) - counts(p)], ['Approved results', counts(r)]]
+  const counts = (q: any) => q.data ?? 0
+  const tiles = [['Departments', counts(d)], ['Events', counts(e)], ['Published', counts(p)], ['Drafts', counts(draft)], ['Approved results', counts(r)]]
   return <div><div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">{tiles.map(([l, v]) => <div key={l as string} className="card p-3 text-center"><div className="font-display text-3xl text-gold">{v as number}</div><div className="text-xs text-mute">{l}</div></div>)}</div>
     <h3 className="mb-2 text-2xl">Top departments</h3><State q={lb}>{lb.data?.map((x: any) => <p key={x.name} className="text-sm">#{x.rank} {x.name} — {x.total_points}</p>)}</State>
     <h3 className="mb-2 mt-6 text-2xl">Score audit history</h3><State q={log} empty="No score changes yet.">{log.data?.map((x: any) => <p key={x.id} className="card mb-1 p-2 text-xs">{new Date(x.changed_at).toLocaleString()} · {x.action} on {x.table_name}</p>)}</State></div>

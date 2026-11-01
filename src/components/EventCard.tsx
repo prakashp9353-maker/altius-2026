@@ -2,6 +2,14 @@
 import { posterUrl } from '../lib'
 import { Calendar, MapPin, ExternalLink } from 'lucide-react'
 
+const formatTime = (time?: string | null) => {
+  if (!time) return ''
+  const [hours, minutes] = time.slice(0, 5).split(':').map(Number)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return time.slice(0, 5)
+  const hour = hours % 12 || 12
+  return `${hour}:${String(minutes).padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`
+}
+
 export default function EventCard({ e }: { e: any }) {
   const img = posterUrl(e.poster_path)
 
@@ -31,8 +39,8 @@ export default function EventCard({ e }: { e: any }) {
 
         <p className="flex items-center gap-1 text-xs text-mute">
           <Calendar size={13} />
-          {e.event_date ?? 'Date TBA'} {e.start_time?.slice(0, 5)}
-          {e.end_time && `–${e.end_time.slice(0, 5)}`}
+          {e.event_date ?? 'Date TBA'} {formatTime(e.start_time)}
+          {e.end_time && `–${formatTime(e.end_time)}`}
         </p>
 
         <p className="flex items-center gap-1 text-xs text-mute">
@@ -51,14 +59,11 @@ export default function EventCard({ e }: { e: any }) {
               </>
             )}
             {e.entry_fee && <p>Entry fee: {e.entry_fee}</p>}
-            {e.contact_person && (
+            {(e.contact_person || e.contact_phone) && (
               <p>
-                Contact: {e.contact_person}{' '}
-                {e.contact_phone && (
-                  <a className="text-gold" href={`tel:${e.contact_phone}`}>
-                    {e.contact_phone}
-                  </a>
-                )}
+                <span>Contact:</span>
+                {e.contact_person && <><br />{e.contact_person}</>}
+                {e.contact_phone && <><br />{e.contact_phone}</>}
               </p>
             )}
           </div>
