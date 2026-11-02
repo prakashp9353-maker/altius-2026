@@ -43,7 +43,7 @@ export async function applyProvisionalScoring(data: any[]) {
     }
   }
 
-  return (data ?? []).map((row: any) => {
+  const rows = (data ?? []).map((row: any) => {
     const removed = counts[row.department_id] ?? { winners: 0, runners: 0 }
     const firsts = Math.max(0, (row.firsts ?? 0) - removed.winners)
     const seconds = Math.max(0, (row.seconds ?? 0) - removed.runners)
@@ -53,4 +53,14 @@ export async function applyProvisionalScoring(data: any[]) {
       total_points: winner_points + runner_points + (row.participation_points ?? 0) + (row.bonus_points ?? 0) }
   }).sort((a: any, b: any) =>
     b.total_points - a.total_points || b.firsts - a.firsts || b.seconds - a.seconds || a.name.localeCompare(b.name))
+
+  let rank = 0
+  let previous = ''
+  for (let i = 0; i < rows.length; i++) {
+    const key = `${rows[i].total_points}:${rows[i].firsts}:${rows[i].seconds}`
+    if (key !== previous) rank = i + 1
+    rows[i].rank = rank
+    previous = key
+  }
+  return rows
 }

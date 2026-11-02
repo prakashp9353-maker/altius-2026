@@ -21,7 +21,7 @@ export default function Home() {
     try { return { data: await applyProvisionalScoring(result.data ?? []), error: null } }
     catch (error: any) { return { data: null, error } }
   })
-  const wins = useQuery(() => supabase.from('event_results').select('*,events(title),w:departments!event_results_winner_dept_id_fkey(name)').eq('status', 'approved').order('updated_at', { ascending: false }).limit(5))
+  const wins = useQuery(() => supabase.from('event_results').select('*,events(title,department_id),w:departments!event_results_winner_dept_id_fkey(name)').eq('status', 'approved').order('updated_at', { ascending: false }).limit(5))
   const ann = useQuery(() => supabase.from('announcements').select('*').eq('published', true).lte('publish_at', new Date().toISOString()).order('publish_at', { ascending: false }).limit(3))
   const deps = useQuery(() => supabase.from('departments').select('name,slug').order('sort_order'))
   return <>
@@ -43,7 +43,10 @@ export default function Home() {
     <section className="wrap mt-16"><div className="mb-4 flex items-end justify-between"><h2 className="text-4xl">Leaderboard</h2><Link className="btn-o" to="/leaderboard">View Full Leaderboard</Link></div>
       <State q={lb}>{lb.data && <><Podium rows={lb.data} /><Table rows={lb.data.slice(0, 8)} /></>}</State></section>
     <section className="wrap mt-16 grid gap-8 md:grid-cols-2">
-      <div><h2 className="mb-4 text-3xl">Recent Winners</h2><State q={wins} empty="No approved results yet.">{wins.data?.map((r: any) => <p key={r.id} className="card mb-2 p-3 text-sm"><b className="text-white">{r.events?.title}</b>: {r.w?.name} {r.winner_name && `(${r.winner_name})`} {r.provisional && <span className="ml-1 rounded bg-gold/20 px-1 text-xs text-gold">PROVISIONAL</span>}</p>)}</State></div>
+      <div><h2 className="mb-4 text-3xl">Recent Winners</h2><State q={wins} empty="No approved results yet.">{wins.data?.map((r: any) => {
+        const points = r.winner_dept_id && r.winner_dept_id !== r.events?.department_id ? 5 : 0
+        return <p key={r.id} className="card mb-2 p-3 text-sm"><b className="text-white">{r.events?.title}</b>: {r.w?.name} {r.winner_name && `(${r.winner_name})`} · {points} pts {r.provisional && <span className="ml-1 rounded bg-gold/20 px-1 text-xs text-gold">PROVISIONAL</span>}</p>
+      })}</State></div>
       <div><h2 className="mb-4 text-3xl">Announcements</h2><State q={ann} empty="No announcements yet.">{ann.data?.map((a: any) => <div key={a.id} className="card mb-2 p-3"><b className="text-white">{a.important && '★ '}{a.title}</b><p className="text-sm text-mute">{a.body}</p></div>)}</State></div>
     </section>
     <section className="wrap mt-16"><h2 className="mb-4 text-3xl">Participating Departments</h2>

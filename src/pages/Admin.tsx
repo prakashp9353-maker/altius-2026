@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { supabase, useQuery, State, posterUrl, configured } from '../lib'
+import { supabase, useQuery, State, posterUrl, configured, applyProvisionalScoring } from '../lib'
 import { DEFAULT_GUIDELINES } from './Info'
 
 export function Login() {
@@ -94,7 +94,7 @@ function ResultsAdmin() {
   const row = { ...f, winner_dept_id: f.winner_dept_id || null, runner_dept_id: f.runner_dept_id || null }
   const { error } = await supabase.from('event_results').upsert(row, { onConflict: 'event_id' })
   if (error) return setM(error.message)
-  setM('Result saved. Points update automatically (5 winner, 3 runner-up, once per placing).')
+  setM('Result saved. Host-department winner, runner-up, and participation points are excluded; other department points update automatically.')
   setF(blankR)
   rs.reload()
 }
@@ -130,14 +130,21 @@ function ResultsAdmin() {
 
 function Records({ kind }: { kind: 'participation' | 'bonus' }) {
   const P = kind === 'participation', table = P ? 'participation_records' : 'bonus_records', col = P ? 'eligible_count' : 'recipients'
-  const deps = useDeps(), evs = useQuery(() => supabase.from('events').select('id,title').order('title'))
+  const deps = useDeps(), evs = useQuery(() => supabase.from('events').select('id,title,department_id').order('title'))
   const rs = useQuery(() => supabase.from(table).select('*,departments(name),events(title,department_id)').order('created_at', { ascending: false }))
   const [dep, setDep] = useState(''), [evId, setEvId] = useState(''), [label, setLabel] = useState(''), [n, setN] = useState('0'), [m, setM] = useState('')
   async function save(e: any) {
     e.preventDefault()
     const row: any = P ? { department_id: dep, event_id: evId || null, period_label: label, eligible_count: +n } : { department_id: dep, reference_label: label, recipients: +n }
     const { error } = await supabase.from(table).insert(row)
-    setM(error ? (error.code === '23505' ? 'A record already exists for this department and event/reporting period. Edit it instead, or use a different reporting label if a second report is authorized.' : error.message) : `Saved. ${n} × ${P ? 1 : 5} = ${+n * (P ? 1 : 5)} points.`)
+    if (error) {
+      setM(error.code === '23505' ? 'A record already exists for this department and event/reporting period. Edit it instead, or use a different reporting label if a second report is authorized.' : error.message)
+    } else {
+      const hostingEvent = P ? evs.data?.find((event: any) => event.id === evId) : null
+      const ownEvent = Boolean(hostingEvent && hostingEvent.department_id === dep)
+      const points = ownEvent ? 0 : +n * (P ? 1 : 5)
+      setM(`Saved. ${P ? 'Host-department participation is excluded; ' : ''}Scored points: ${points}.`)
+    }
     if (!error) { setN('0'); setLabel(''); rs.reload() }
   }
   async function edit(x: any) { const v = prompt(`New ${P ? 'eligible participant count' : 'bonus recipient count'}`, x[col]); if (v === null || isNaN(+v) || +v < 0) return; const { error } = await supabase.from(table).update({ [col]: +v }).eq('id', x.id); setM(error ? error.message : 'Record updated.'); rs.reload() }
@@ -199,7 +206,14 @@ function Overview() {
     return { data: count ?? 0, error }
   })
   const d = c('departments'), e = c('events'), p = c('events', q => q.eq('published', true)), draft = c('events', q => q.eq('published', false)), r = c('event_results', q => q.eq('status', 'approved').eq('provisional', false))
-  const lb = useQuery(() => supabase.from('leaderboard').select('name,total_points,rank').order('rank').limit(5))
+  const lb = useQuery<any[]>(async () => {
+    const result = await supabase.from('leaderboard').select('*').order('rank').order('name')
+    if (result.error) return result
+    try {
+      const rows = await applyProvisionalScoring(result.data ?? [])
+      return { data: rows.slice(0, 5), error: null }
+    } catch (error: any) { return { data: null, error } }
+  })
   const log = useQuery(() => supabase.from('score_audit_logs').select('*').order('changed_at', { ascending: false }).limit(15))
   const counts = (q: any) => q.data ?? 0
   const tiles = [['Departments', counts(d)], ['Events', counts(e)], ['Published', counts(p)], ['Drafts', counts(draft)], ['Approved results', counts(r)]]
