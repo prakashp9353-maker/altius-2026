@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Phone } from 'lucide-react'
-import { supabase, useQuery, State } from '../lib'
+import { supabase, useQuery, State, applyProvisionalScoring } from '../lib'
 
 const medal = ['text-gold', 'text-zinc-300', 'text-amber-600']
 export function Podium({ rows }: { rows: any[] }) {
@@ -18,27 +18,8 @@ export function Leaderboard() {
   const lb = useQuery<any[]>(async () => {
     const { data, error } = await supabase.from('leaderboard').select('*').order('rank').order('name')
     if (error) return { data, error }
-    const provisional = await supabase.from('event_results').select('winner_dept_id,runner_dept_id').eq('status', 'approved').eq('provisional', true)
-    if (provisional.error) return { data: null, error: provisional.error }
-    const counts: Record<string, { winners: number; runners: number }> = {}
-    for (const row of provisional.data ?? []) {
-      if (row.winner_dept_id) {
-        counts[row.winner_dept_id] ??= { winners: 0, runners: 0 }
-        counts[row.winner_dept_id].winners++
-      }
-      if (row.runner_dept_id) {
-        counts[row.runner_dept_id] ??= { winners: 0, runners: 0 }
-        counts[row.runner_dept_id].runners++
-      }
-    }
-    const rows = (data ?? []).map((row: any) => {
-      const removed = counts[row.department_id] ?? { winners: 0, runners: 0 }
-      const firsts = Math.max(0, (row.firsts ?? 0) - removed.winners)
-      const seconds = Math.max(0, (row.seconds ?? 0) - removed.runners)
-      const winner_points = Math.max(0, (row.winner_points ?? 0) - removed.winners * 5)
-      const runner_points = Math.max(0, (row.runner_points ?? 0) - removed.runners * 3)
-      return { ...row, firsts, seconds, winner_points, runner_points, total_points: winner_points + runner_points + (row.participation_points ?? 0) + (row.bonus_points ?? 0) }
-    }).sort((a: any, b: any) => b.total_points - a.total_points || b.firsts - a.firsts || b.seconds - a.seconds || a.name.localeCompare(b.name))
+    let rows: any[]
+    try { rows = await applyProvisionalScoring(data ?? []) } catch (provisionalError: any) { return { data: null, error: { message: provisionalError.message ?? String(provisionalError) } } }
     let rank = 0, previous = ''
     for (let i = 0; i < rows.length; i++) {
       const key = `${rows[i].total_points}:${rows[i].firsts}:${rows[i].seconds}`
@@ -75,7 +56,7 @@ export function Leaderboard() {
     }
     return { data: rows, error: null }
   })
-  const res = useQuery(() => supabase.from('event_results').select('*,events(title),w:departments!event_results_winner_dept_id_fkey(name),r:departments!event_results_runner_dept_id_fkey(name)').eq('status', 'approved').eq('provisional', false).order('updated_at', { ascending: false }))
+  const res = useQuery(() => supabase.from('event_results').select('*,events(title,department_id),w:departments!event_results_winner_dept_id_fkey(name),r:departments!event_results_runner_dept_id_fkey(name)').eq('status', 'approved').eq('provisional', false).order('updated_at', { ascending: false }))
 
   useEffect(() => {
     const refresh = () => { lb.reload(); res.reload() }
@@ -96,8 +77,13 @@ export function Leaderboard() {
     <p className="mb-6 text-sm text-mute">Last updated: {upd ? new Date(upd).toLocaleString() : 'no score changes yet'}. Ties are broken by first-place finishes, then runner-up finishes; otherwise departments are joint champions.</p>
     <State q={lb}>{lb.data && <><Podium rows={lb.data} /><Table rows={lb.data} /></>}</State>
     <h2 className="mb-3 mt-12 text-3xl">Event-wise Results</h2>
-    <State q={res} empty="No approved results yet.">{res.data?.map((r: any) => <div key={r.id} className="card mb-2 p-4 text-sm"><b className="text-white">{r.events?.title}</b> {r.provisional && <span className="ml-1 rounded bg-gold/20 px-1 text-xs text-gold">PROVISIONAL</span>}
-      <p>🥇 {r.w?.name ?? '—'} {r.winner_name && `· ${r.winner_name}`}</p><p>🥈 {r.r?.name ?? '—'} {r.runner_name && `· ${r.runner_name}`}</p></div>)}</State></div>
+    <State q={res} empty="No approved results yet.">{res.data?.map((r: any) => {
+      const hostId = r.events?.department_id
+      const winnerPoints = r.winner_dept_id && r.winner_dept_id !== hostId ? 5 : 0
+      const runnerPoints = r.runner_dept_id && r.runner_dept_id !== hostId ? 3 : 0
+      return <div key={r.id} className="card mb-2 p-4 text-sm"><b className="text-white">{r.events?.title}</b> {r.provisional && <span className="ml-1 rounded bg-gold/20 px-1 text-xs text-gold">PROVISIONAL</span>}
+      <p>🥇 {r.w?.name ?? '—'} {r.winner_name && `· ${r.winner_name}`} · {winnerPoints} pts</p><p>🥈 {r.r?.name ?? '—'} {r.runner_name && `· ${r.runner_name}`} · {runnerPoints} pts</p></div>
+    })}</State></div>
 }
 export const DEFAULT_GUIDELINES = `## Department Responsibilities
 - Each department must use the official poster template provided by the ALTIUS Organizing Committee and organize at least two events: one technical and one non-technical.
@@ -108,7 +94,7 @@ export const DEFAULT_GUIDELINES = `## Department Responsibilities
 - Participation in a student's own-department events does not count toward the cross-department bonus.
 - Students must provide accurate registration information and follow coordinator instructions.
 ## Championship Points
-- First place earns 5 points and second place earns 3 points.
+- First place earns 5 points and second place earns 3 points, but a department earns nothing from winner, runner-up, or participation points for events it hosts.
 - Only officially approved results count.
 - Team placing points are awarded once to the represented department, not multiplied by team size.
 - Participation points are credited individually to each eligible student's registered home department.

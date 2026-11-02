@@ -86,9 +86,21 @@ end $$;
 
 -- Single source of truth for scores: totals are always computed here.
 create view leaderboard as
-with w as (select winner_dept_id d, count(*)::int n from event_results where status='approved' and winner_dept_id is not null group by 1),
-r as (select runner_dept_id d, count(*)::int n from event_results where status='approved' and runner_dept_id is not null group by 1),
-p as (select department_id d, sum(eligible_count)::int n from participation_records group by 1),
+with w as (
+  select er.winner_dept_id d, count(*)::int n
+  from event_results er join events e on e.id=er.event_id
+  where er.status='approved' and er.winner_dept_id is not null and er.winner_dept_id<>e.department_id
+  group by 1),
+r as (
+  select er.runner_dept_id d, count(*)::int n
+  from event_results er join events e on e.id=er.event_id
+  where er.status='approved' and er.runner_dept_id is not null and er.runner_dept_id<>e.department_id
+  group by 1),
+p as (
+  select pr.department_id d, sum(pr.eligible_count)::int n
+  from participation_records pr left join events e on e.id=pr.event_id
+  where pr.event_id is null or pr.department_id<>e.department_id
+  group by 1),
 b as (select department_id d, sum(recipients)::int n from bonus_records group by 1),
 base as (select dp.id department_id, dp.name, dp.slug,
   coalesce(w.n,0)*5 winner_points, coalesce(r.n,0)*3 runner_points,

@@ -23,3 +23,34 @@ export function State({ q, empty, children }: { q: any; empty?: string; children
   if (empty && (!q.data || q.data.length === 0)) return <p className="card p-6 text-center text-mute">{empty}</p>
   return children
 }
+
+export async function applyProvisionalScoring(data: any[]) {
+  const provisional = await supabase.from('event_results')
+    .select('winner_dept_id,runner_dept_id')
+    .eq('status', 'approved')
+    .eq('provisional', true)
+  if (provisional.error) throw provisional.error
+
+  const counts: Record<string, { winners: number; runners: number }> = {}
+  for (const row of provisional.data ?? []) {
+    if (row.winner_dept_id) {
+      counts[row.winner_dept_id] ??= { winners: 0, runners: 0 }
+      counts[row.winner_dept_id].winners++
+    }
+    if (row.runner_dept_id) {
+      counts[row.runner_dept_id] ??= { winners: 0, runners: 0 }
+      counts[row.runner_dept_id].runners++
+    }
+  }
+
+  return (data ?? []).map((row: any) => {
+    const removed = counts[row.department_id] ?? { winners: 0, runners: 0 }
+    const firsts = Math.max(0, (row.firsts ?? 0) - removed.winners)
+    const seconds = Math.max(0, (row.seconds ?? 0) - removed.runners)
+    const winner_points = Math.max(0, (row.winner_points ?? 0) - removed.winners * 5)
+    const runner_points = Math.max(0, (row.runner_points ?? 0) - removed.runners * 3)
+    return { ...row, firsts, seconds, winner_points, runner_points,
+      total_points: winner_points + runner_points + (row.participation_points ?? 0) + (row.bonus_points ?? 0) }
+  }).sort((a: any, b: any) =>
+    b.total_points - a.total_points || b.firsts - a.firsts || b.seconds - a.seconds || a.name.localeCompare(b.name))
+}

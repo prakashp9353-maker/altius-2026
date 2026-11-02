@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Trophy, Users, Award, Cpu } from 'lucide-react'
-import { supabase, useQuery, State, EVENT_DATE } from '../lib'
+import { supabase, useQuery, State, EVENT_DATE, applyProvisionalScoring } from '../lib'
 import EventCard from '../components/EventCard'
 import { Podium, Table } from './Info'
 
@@ -15,7 +15,12 @@ function Countdown() {
 }
 export default function Home() {
   const feat = useQuery(() => supabase.from('events').select('*,departments(name)').eq('published', true).eq('featured', true).limit(6))
-  const lb = useQuery(() => supabase.from('leaderboard').select('*').order('rank').order('name'))
+  const lb = useQuery<any[]>(async () => {
+    const result = await supabase.from('leaderboard').select('*').order('rank').order('name')
+    if (result.error) return result
+    try { return { data: await applyProvisionalScoring(result.data ?? []), error: null } }
+    catch (error: any) { return { data: null, error } }
+  })
   const wins = useQuery(() => supabase.from('event_results').select('*,events(title),w:departments!event_results_winner_dept_id_fkey(name)').eq('status', 'approved').order('updated_at', { ascending: false }).limit(5))
   const ann = useQuery(() => supabase.from('announcements').select('*').eq('published', true).lte('publish_at', new Date().toISOString()).order('publish_at', { ascending: false }).limit(3))
   const deps = useQuery(() => supabase.from('departments').select('name,slug').order('sort_order'))

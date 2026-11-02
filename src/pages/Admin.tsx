@@ -85,7 +85,7 @@ function EventsAdmin() {
 }
 
 function ResultsAdmin() {
-  const deps = useDeps(), evs = useQuery(() => supabase.from('events').select('id,title').order('title')), rs = useQuery(() => supabase.from('event_results').select('*,events(title),w:departments!event_results_winner_dept_id_fkey(name),r:departments!event_results_runner_dept_id_fkey(name)').order('updated_at', { ascending: false }))
+  const deps = useDeps(), evs = useQuery(() => supabase.from('events').select('id,title,department_id').order('title')), rs = useQuery(() => supabase.from('event_results').select('*,events(title,department_id),w:departments!event_results_winner_dept_id_fkey(name),r:departments!event_results_runner_dept_id_fkey(name)').order('updated_at', { ascending: false }))
   const blankR = { event_id: '', winner_dept_id: '', runner_dept_id: '', winner_name: '', runner_name: '', status: 'pending', provisional: true }
   const [f, setF] = useState<any>(blankR), [m, setM] = useState('')
   const set = (k: string, v: any) => setF({ ...f, [k]: v })
@@ -107,7 +107,11 @@ function ResultsAdmin() {
     <L t="Runner-up / team name"><input className="input" value={f.runner_name ?? ''} onChange={e => set('runner_name', e.target.value)} /></L>
     <label className="text-sm"><input type="checkbox" checked={f.provisional} onChange={e => set('provisional', e.target.checked)} /> Mark as PROVISIONAL</label>
     <button className="btn">Save result</button></form>
-    <State q={rs} empty="No results entered yet.">{rs.data?.map((x: any) => <div key={x.id} className="card mb-2 flex flex-wrap items-center justify-between gap-2 p-3 text-sm"><span><b className="text-white">{x.events?.title}</b> · 🥇 {x.w?.name ?? '—'} · 🥈 {x.r?.name ?? '—'} · {x.status}</span>
+    <State q={rs} empty="No results entered yet.">{rs.data?.map((x: any) => {
+      const hostId = x.events?.department_id
+      const winnerPoints = x.winner_dept_id && x.winner_dept_id !== hostId ? 5 : 0
+      const runnerPoints = x.runner_dept_id && x.runner_dept_id !== hostId ? 3 : 0
+      return <div key={x.id} className="card mb-2 flex flex-wrap items-center justify-between gap-2 p-3 text-sm"><span><b className="text-white">{x.events?.title}</b> · 🥇 {x.w?.name ?? '—'} ({winnerPoints} pts) · 🥈 {x.r?.name ?? '—'} ({runnerPoints} pts) · {x.status}{x.provisional ? ' · PROVISIONAL' : ''}</span>
       <span className="flex gap-2">
         <button className="btn-o" onClick={() => { const { events, w, r, created_at, updated_at, ...rest } = x; setF(rest); window.scrollTo(0, 0) }}>Edit</button>
         <button
@@ -121,13 +125,13 @@ function ResultsAdmin() {
             rs.reload()
           }}
         >Delete</button>
-      </span></div>)}</State></div>
+      </span></div>})}</State></div>
 }
 
 function Records({ kind }: { kind: 'participation' | 'bonus' }) {
   const P = kind === 'participation', table = P ? 'participation_records' : 'bonus_records', col = P ? 'eligible_count' : 'recipients'
   const deps = useDeps(), evs = useQuery(() => supabase.from('events').select('id,title').order('title'))
-  const rs = useQuery(() => supabase.from(table).select('*,departments(name)').order('created_at', { ascending: false }))
+  const rs = useQuery(() => supabase.from(table).select('*,departments(name),events(title,department_id)').order('created_at', { ascending: false }))
   const [dep, setDep] = useState(''), [evId, setEvId] = useState(''), [label, setLabel] = useState(''), [n, setN] = useState('0'), [m, setM] = useState('')
   async function save(e: any) {
     e.preventDefault()
@@ -144,8 +148,11 @@ function Records({ kind }: { kind: 'participation' | 'bonus' }) {
     <L t={P ? 'Reporting period (required if no event)' : 'Reference label (e.g. Final verification) *'}><input className="input" required={!P || !evId} value={label} onChange={e => setLabel(e.target.value)} /></L>
     <L t={P ? 'Verified eligible participants (1 pt each)' : 'Approved bonus recipients (5 pts each)'}><input className="input" type="number" min={0} required value={n} onChange={e => setN(e.target.value)} /></L>
     <button className="btn sm:col-span-2">Save record</button></form>
-    <State q={rs} empty="No records yet.">{rs.data?.map((x: any) => <div key={x.id} className="card mb-2 flex flex-wrap items-center justify-between gap-2 p-3 text-sm"><span><b className="text-white">{x.departments?.name}</b> · {x.period_label || x.reference_label || 'event'} · {x[col]} → {x[col] * (P ? 1 : 5)} pts</span>
-      <span className="flex gap-2"><button className="btn-o" onClick={() => edit(x)}>Edit</button><button className="btn-o" onClick={() => del(x)}>Delete</button></span></div>)}</State></div>
+    <State q={rs} empty="No records yet.">{rs.data?.map((x: any) => {
+      const ownEvent = P && x.event_id && x.department_id === x.events?.department_id
+      const scored = ownEvent ? 0 : x[col] * (P ? 1 : 5)
+      return <div key={x.id} className="card mb-2 flex flex-wrap items-center justify-between gap-2 p-3 text-sm"><span><b className="text-white">{x.departments?.name}</b> · {x.events?.title || x.period_label || x.reference_label || 'period'} · {x[col]} → {scored} pts{ownEvent ? ' (host department excluded)' : ''}</span>
+      <span className="flex gap-2"><button className="btn-o" onClick={() => edit(x)}>Edit</button><button className="btn-o" onClick={() => del(x)}>Delete</button></span></div>})}</State></div>
 }
 
 function AnnAdmin() {
